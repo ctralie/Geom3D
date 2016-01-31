@@ -1,3 +1,7 @@
+#Programmer: Chris Tralie
+#Purpose: To provide a simple polygon mesh class on top of numpy and PyOpenGL
+#capable of reading and writing off files, as well as rendering meshes and
+#performing some simple geometric and topological manipulations
 from Primitives3D import *
 from OpenGL.GL import *
 from OpenGL.arrays import vbo
@@ -1237,10 +1241,15 @@ def saveOffFileExternal(filename, VPos, VColors, ITris):
     nV = VPos.shape[0]
     nF = ITris.shape[0]
     fout = open(filename, "w")
-    fout.write("COFF\n%i %i %i\n"%(nV, nF, 0))
+    if VColors.size == 0:
+        fout.write("OFF\n%i %i %i\n"%(nV, nF, 0))
+    else:
+        fout.write("COFF\n%i %i %i\n"%(nV, nF, 0))
     for i in range(nV):
         fout.write("%g %g %g"%tuple(VPos[i, :]))
-        fout.write(" %g %g %g\n"%tuple(VColors[i, :]))
+        if VColors.size > 0:
+            fout.write(" %g %g %g"%tuple(VColors[i, :]))
+        fout.write("\n")
     for i in range(nF):
         fout.write("3 %i %i %i\n"%tuple(ITris[i, :]))
     fout.close()
@@ -1307,6 +1316,36 @@ def loadOffFileExternal(filename):
     VColors = np.array(VColors, np.float64)
     ITris = np.array(ITris, np.int32)
     return (VPos, VColors, ITris) 
+
+#Make a surface of revolution around the y-axis (x = 0, z = 0)
+#X: An ordrered N x 2 list of points in the XY plane that make up a curve
+#NSteps: Number of points to sample around the circle of revolution
+def makeSurfaceOfRevolution(X, NSteps):
+    N = X.shape[0]
+    thetas = np.linspace(0, 2*np.pi, NSteps+1)[0:NSteps]
+    M = N*NSteps #Total number of vertices
+    VPos = np.zeros((M, 3))
+    #First make all of the points
+    for i in range(NSteps):
+        VPos[N*i:N*(i+1), 1] = X[:, 1] #The Y positions stay the same; it's only XZ that change
+        VPos[N*i:N*(i+1), 0] = X[:, 0]*np.cos(thetas[i])
+        VPos[N*i:N*(i+1), 2] = X[:, 0]*np.sin(thetas[i])
+    #Now make all of the triangle faces connecting them
+    L = (N-1)*2 #Number of triangles added for each curve position
+    ITris = np.zeros((L*NSteps, 3))
+    for i in range(NSteps):
+        j = (i+1)%NSteps
+        #Upper triangles, CCW order
+        idx = np.arange(L*i, L*(i+1), 2)
+        ITris[idx, 0] = N*i + np.arange(N-1)
+        ITris[idx, 1] = N*j + np.arange(N-1)
+        ITris[idx, 2] = N*j + 1 + np.arange(N-1)
+        #Lower triangles, CCW order
+        idx = np.arange(L*i+1, L*(i+1), 2)
+        ITris[idx, 0] = N*i + np.arange(N-1)
+        ITris[idx, 1] = N*j + 1 + np.arange(N-1)
+        ITris[idx, 2] = N*i + 1 + np.arange(N-1)
+    return (VPos, ITris)
 
 #############################################################
 ####               STANDARD MESHES                      #####
