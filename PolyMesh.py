@@ -1660,7 +1660,7 @@ def getSphereMesh(R, nIters):
     for i in range(nIters):
         mesh.evenTriangleRemesh()
         #Move points so that they're R away from the origin
-        mesh.VPos = mesh.VPos/np.reshape(np.sqrt(np.sum(mesh.VPos**2, 1)), [mesh.VPos.shape[0], 1])
+        mesh.VPos = R*mesh.VPos/np.reshape(np.sqrt(np.sum(mesh.VPos**2, 1)), [mesh.VPos.shape[0], 1])
     return mesh
 
 def getHemiSphereMesh(R, nIters):
