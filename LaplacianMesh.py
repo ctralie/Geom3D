@@ -13,9 +13,11 @@ import matplotlib.pyplot as plt
 
 import os
 this_path = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, this_path + '/ext/libigl/python/')
-sys.path.insert(0, this_path + '/ext/lib/')
-import igl
+if os.path.exists(this_path + '/ext/lib') and os.path.exists(this_path + '/ext/libigl/python'):
+    sys.path.insert(0, this_path + '/ext/libigl/python/')
+    sys.path.insert(0, this_path + '/ext/lib/')
+    print "Importing IGL"
+    import igl
 
 #Quickly compute sparse Laplacian matrix with cotangent weights and Voronoi areas
 #by doing many operations in parallel using NumPy

@@ -778,6 +778,103 @@ class PolyMesh(object):
             self.VPos[V.ID, :] = P0 - dPPar + dPPerp
         self.needsDisplayUpdate = True
     
+    #Uniformly sample points on this mesh at random, taking into consideration
+    #the area of triangle faces
+    #Return the points and normal estimates
+    #colPoints: Whether to return the points/normals in columns or rows
+    def randomlySamplePoints(self, NPoints, colPoints = True):
+        if self.needsDisplayUpdate:
+            #Make sure the triangle buffer is in place even if the rest of
+            #the buffers haven't been setup yet
+            self.updateTris()
+        ###Step 1: Compute cross product of all face triangles and use to compute
+        #areas and normals (very similar to code used to compute vertex normals)
+        
+        #Vectors spanning two triangle edges
+        P0 = self.VPos[self.ITris[:, 0], :]
+        P1 = self.VPos[self.ITris[:, 1], :]
+        P2 = self.VPos[self.ITris[:, 2], :]
+        V1 = P1 - P0
+        V2 = P2 - P0
+        FNormals = np.cross(V1, V2)
+        FAreas = np.sqrt(np.sum(FNormals**2, 1)).flatten()
+        
+        #Get rid of zero area faces and update points
+        self.ITris = self.ITris[FAreas > 0, :]
+        FNormals = FNormals[FAreas > 0, :]
+        FAreas = FAreas[FAreas > 0]
+        P0 = self.VPos[self.ITris[:, 0], :]
+        P1 = self.VPos[self.ITris[:, 1], :]
+        P2 = self.VPos[self.ITris[:, 2], :]
+        
+        #Compute normals
+        NTris = self.ITris.shape[0]
+        FNormals = FNormals/FAreas[:, None]
+        FAreas = 0.5*FAreas
+        self.FNormals = FNormals
+        self.FCentroid = 0*FNormals
+        self.VNormals = 0*self.VPos
+        VAreas = np.zeros(self.VPos.shape[0])
+        for k in range(3):
+            self.VNormals[self.ITris[:, k], :] += FAreas[:, None]*FNormals
+            VAreas[self.ITris[:, k]] += FAreas
+        #Normalize normals
+        VAreas[VAreas == 0] = 1
+        self.VNormals = self.VNormals / VAreas[:, None]
+        
+        ###Step 2: Randomly sample points based on areas
+        FAreas = FAreas/np.sum(FAreas)
+        AreasC = np.cumsum(FAreas)
+        samples = np.sort(np.random.rand(NPoints))
+        #Figure out how many samples there are for each face
+        FSamples = np.zeros(NTris)
+        fidx = 0
+        for s in samples:
+            while s > AreasC[fidx]:
+                fidx += 1
+            FSamples[fidx] += 1
+        #Now initialize an array that stores the triangle sample indices
+        tidx = np.zeros(NPoints, dtype=np.int64)
+        idx = 0
+        for i in range(len(FSamples)):
+            tidx[idx:idx+FSamples[i]] = i
+            idx += FSamples[i]
+        N = np.zeros((NPoints, 3)) #Allocate space for normals
+        idx = 0
+        
+        #Vector used to determine if points need to be flipped across parallelogram
+        V3 = P2 - P1
+        V3 = V3/np.sqrt(np.sum(V3**2, 1))[:, None] #Normalize
+        
+        #Randomly sample points on each face        
+        #Generate random points uniformly in parallelogram
+        u = np.random.rand(NPoints, 1)
+        v = np.random.rand(NPoints, 1)
+        Ps = u*V1[tidx, :] + P0[tidx, :]
+        Ps += v*V2[tidx, :]
+        #Flip over points which are on the other side of the triangle
+        dP = Ps - P1[tidx, :]
+        proj = np.sum(dP*V3[tidx, :], 1)
+        dPPar = V3[tidx, :]*proj[:, None] #Parallel project onto edge
+        dPPerp = dP - dPPar
+        Qs = Ps - dPPerp
+        dP0QSqr = np.sum((Qs - P0[tidx, :])**2, 1)
+        dP0PSqr = np.sum((Ps - P0[tidx, :])**2, 1)
+        idxreg = np.arange(NPoints, dtype=np.int64)
+        idxflip = idxreg[dP0QSqr < dP0PSqr]
+        u[idxflip, :] = 1 - u[idxflip, :]
+        v[idxflip, :] = 1 - v[idxflip, :]
+        Ps[idxflip, :] = P0[tidx[idxflip], :] + u[idxflip, :]*V1[tidx[idxflip], :] + v[idxflip, :]*V2[tidx[idxflip], :]
+        
+        #Step 3: Compute normals of sampled points by barycentric interpolation
+        Ns = u*self.VNormals[self.ITris[tidx, 1], :]
+        Ns += v*self.VNormals[self.ITris[tidx, 2], :] 
+        Ns += (1-u-v)*self.VNormals[self.ITris[tidx, 0], :]
+        
+        if colPoints:
+            return (Ps.T, Ns.T)
+        return (Ps, Ns)
+    
     #############################################################
     ####                INPUT/OUTPUT METHODS                #####
     #############################################################
@@ -1006,7 +1103,7 @@ class PolyMesh(object):
     ####                     RENDERING                      #####
     #############################################################
     
-    #Figure out triangles that go into the index guffer, splitting faces
+    #Figure out triangles that go into the index buffer, splitting faces
     #with more than three vertices into triangles (assuming convexity)
     def updateTris(self):
         NTris = np.sum(np.array([len(f.edges)-2 for f in self.faces]))
@@ -1579,7 +1676,7 @@ if __name__ == '__main__':
     icosahedronMesh.saveOffFile('icosahedron.off')
     dodecahedronMesh = getDodecahedronMesh()
     dodecahedronMesh.saveOffFile('dodecahedron.off')
-    sphereMesh = getSphereMesh(5, 5)
+    sphereMesh = getSphereMesh(1, 2)
     sphereMesh.saveOffFile("sphere.off")
-    boxMesh = getBoxMesh(1, 1, 1, np.array([0, 0, 0]), 0.1)
+    boxMesh = getBoxMesh(1, 1, 1, np.array([0, 0, 0]), 1)
     boxMesh.saveOffFile("box.off")
