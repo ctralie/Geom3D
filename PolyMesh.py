@@ -297,7 +297,10 @@ class PolyMesh(object):
         for e in edge:
             return e
         return None
-
+    
+    def getVerticesCols(self):
+        return self.VPos.T
+    
     #############################################################
     ####                ADD/REMOVE METHODS                  #####
     #############################################################
