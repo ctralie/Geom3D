@@ -140,8 +140,8 @@ class Ray3D(object):
     
 #Axis-aligned bounding box class
 class BBox3D(object):
-    def __init__(self, b = np.array([[-1, -1, -1], [1, 1, 1]], dtype = 'float32')):
-        self.b = b
+    def __init__(self):
+        self.b = np.array([[np.inf, np.inf, np.inf], [-np.inf, -np.inf, -np.inf]])
     
     def getDiagLength(self):
         dB = self.b[1, :] - self.b[0, :]

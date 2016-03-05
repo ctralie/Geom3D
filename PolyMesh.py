@@ -1139,8 +1139,10 @@ class PolyMesh(object):
         VAreas[VAreas == 0] = 1
         self.VNormals = self.VNormals / VAreas
     
-    def performDisplayUpdate(self):
-#Clear the buffers for the invalidated mesh
+    #buffersOnly: True if there is no mesh structure other than VPos
+    #VColors and ITris
+    def performDisplayUpdate(self, buffersOnly = False):
+        #Clear the buffers for the invalidated mesh
         if self.VPosVBO:
             self.VPosVBO.delete()
         if self.VNormalsVBO:
@@ -1160,14 +1162,26 @@ class PolyMesh(object):
         self.VPosVBO = vbo.VBO(np.array(self.VPos, dtype=np.float32))
         self.VColorsVBO = vbo.VBO(np.array(self.VColors, dtype=np.float32))
         self.VTexCoordsVBO = vbo.VBO(np.array(self.VTexCoords, dtype=np.float32))
-        self.updateTris()
+        if not buffersOnly:
+            self.updateTris()
         self.IndexVBO = vbo.VBO(self.ITris, target=GL_ELEMENT_ARRAY_BUFFER)
         
         #Update edges buffer
-        self.EdgeLines = np.zeros((len(self.edges)*2, 3))
-        for i in range(len(self.edges)):
-            self.EdgeLines[i*2, :] = self.VPos[self.edges[i].v1.ID, :]
-            self.EdgeLines[i*2+1, :] = self.VPos[self.edges[i].v2.ID, :]
+        if buffersOnly:
+            #Use triangle faces to add edges (will be redundancy but is faster
+            #tradeoff for rendering only)
+            NTris = self.ITris.shape[0]
+            self.EdgeLines = np.zeros((NTris*3*2, 3))
+            for k in range(3):
+                istart = k*NTris*2
+                self.EdgeLines[istart:istart+NTris*2:2, :] = self.VPos[self.ITris[:, k], :]
+                self.EdgeLines[istart+1:istart+NTris*2:2, :] = self.VPos[self.ITris[:, (k+1)%3], :]
+        else:
+            #Use the mesh structure to find the edges
+            self.EdgeLines = np.zeros((len(self.edges)*2, 3))
+            for i in range(len(self.edges)):
+                self.EdgeLines[i*2, :] = self.VPos[self.edges[i].v1.ID, :]
+                self.EdgeLines[i*2+1, :] = self.VPos[self.edges[i].v2.ID, :]
         self.EdgeLinesVBO = vbo.VBO(np.array(self.EdgeLines, dtype=np.float32))
         
         #Update face and vertex normals
@@ -1242,7 +1256,7 @@ class PolyMesh(object):
             glDisable(GL_LIGHTING)
             glLineWidth(2)
             glColor3f(0, 0, 1.0)
-            glDrawArrays(GL_LINES, 0, len(self.edges)*2)
+            glDrawArrays(GL_LINES, 0, self.EdgeLines.shape[0])
             self.EdgeLinesVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
         

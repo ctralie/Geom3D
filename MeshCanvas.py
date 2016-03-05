@@ -119,12 +119,13 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
         glLightfv(GL_LIGHT0, GL_POSITION, np.array([0, 0, 0, 1]))
         self.mesh.renderGL(self.displayMeshEdges, self.displayMeshVertices, self.displayMeshFaces, self.displayVertexNormals, self.displayFaceNormals, self.useLighting, self.useTexture)
     
-    def setupPerspectiveMatrix(self):
+    def setupPerspectiveMatrix(self, nearDist = -1, farDist = -1):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        farDist = self.camera.eye - self.bbox.getCenter()
-        farDist = np.sqrt(farDist.dot(farDist)) + self.bbox.getDiagLength()
-        nearDist = farDist/50.0
+        if nearDist == -1:
+            farDist = self.camera.eye - self.bbox.getCenter()
+            farDist = np.sqrt(farDist.dot(farDist)) + self.bbox.getDiagLength()
+            nearDist = farDist/50.0
         gluPerspective(180.0*self.camera.yfov/M_PI, float(self.size.x)/self.size.y, nearDist, farDist)
     
     def repaint(self):
