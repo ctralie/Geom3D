@@ -11,14 +11,14 @@ import re
 import numpy as np
 import numpy.linalg as linalg
 import struct
-try:
-    from PIL.Image import open as imgopen
-except ImportError, err:
-    from Image import open as imgopen
 
 POINT_SIZE = 7
 
 def loadTexture(filename):
+    try:
+        from PIL.Image import open as imgopen
+    except ImportError, err:
+        from Image import open as imgopen
     im = imgopen(filename)
     try:
         im = im.convert('RGB')
