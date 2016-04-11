@@ -134,6 +134,7 @@ class MeshViewerCanvas(BasicMeshCanvas):
         elif self.GUIState == STATE_CHOOSELAPLACEVERTICES:
             if self.GUISubstate == CHOOSELAPLACE_WAITING:
                 glDisable(GL_LIGHTING)
+                self.camera.gotoCameraFrame()
                 glPointSize(10)
                 glBegin(GL_POINTS)
                 for idx in self.laplacianConstraints:
