@@ -1219,9 +1219,11 @@ class PolyMesh(object):
             glNormalPointerf(self.VNormalsVBO)
             self.VColorsVBO.bind()
             glColorPointerf(self.VColorsVBO)
-            if useTexture:
+            if useTexture and self.VTexCoordsVBO:
                 glEnable(GL_TEXTURE_2D)
                 glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+                self.VTexCoordsVBO.bind()
+                glTexCoordPointerf(self.VTexCoordsVBO)
                 glBindTexture(GL_TEXTURE_2D, self.texID)
             else:
                 glEnable(GL_COLOR_MATERIAL)
@@ -1229,7 +1231,8 @@ class PolyMesh(object):
             self.IndexVBO.bind()
             glDrawElements(GL_TRIANGLES, 3*self.ITris.shape[0], GL_UNSIGNED_INT, None)
             self.IndexVBO.unbind()
-            if useTexture:
+            if useTexture and self.VTexCoordsVBO:
+                self.VTexCoordsVBO.unbind()
                 glDisableClientState(GL_TEXTURE_COORD_ARRAY)
             self.VPosVBO.unbind()
             self.VNormalsVBO.unbind()
@@ -1255,7 +1258,7 @@ class PolyMesh(object):
             glVertexPointerf(self.EdgeLinesVBO)
             glDisable(GL_LIGHTING)
             glLineWidth(2)
-            glColor3f(0, 0, 1.0)
+            glColor3f(1.0, 1.0, 0.0)
             glDrawArrays(GL_LINES, 0, self.EdgeLines.shape[0])
             self.EdgeLinesVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
