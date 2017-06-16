@@ -126,7 +126,7 @@ class MeshViewerCanvas(BasicMeshCanvas):
     def repaint(self):
         self.setupPerspectiveMatrix()
         
-        glClearColor(0.0, 0.0, 0.0, 0.0)
+        glClearColor(1.0, 1.0, 1.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
         if self.GUIState == STATE_NORMAL and self.mesh:
@@ -134,7 +134,6 @@ class MeshViewerCanvas(BasicMeshCanvas):
         elif self.GUIState == STATE_CHOOSELAPLACEVERTICES:
             if self.GUISubstate == CHOOSELAPLACE_WAITING:
                 glDisable(GL_LIGHTING)
-                self.camera.gotoCameraFrame()
                 glPointSize(10)
                 glBegin(GL_POINTS)
                 for idx in self.laplacianConstraints:
