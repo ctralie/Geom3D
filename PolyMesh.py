@@ -26,7 +26,7 @@ def loadTexture(filename):
     except SystemError:
         ix, iy, image = im.size[0], im.size[1], im.tostring("raw", "RGBX", 0, -1)
     assert ix*iy*4 == len(image), """Unpacked image size for texture is incorrect"""
-    
+
     texID = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, texID)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
@@ -41,7 +41,7 @@ class EdgesCCWComparator(object):
         self.VCenter = VCenter #Common point of all edges
         self.N = N
         self.mesh = VCenter.mesh
-    
+
     def compare(self, e1, e2):
         V1 = e1.vertexAcross(self.VCenter)
         V2 = e2.vertexAcross(self.VCenter)
@@ -72,10 +72,10 @@ class MeshVertex(object):
         self.edges = set() #Store reference to all emanating edges
         #NOTE: Edges are not guaranteed to be in any particular order
         self.component = -1 #Which connected component it's in
-    
+
     def getPos(self):
         return self.mesh.VPos[self.ID, :]
-    
+
     def getVertexNeighbors(self):
         ret = [0]*len(self.edges)
         i = 0
@@ -83,7 +83,7 @@ class MeshVertex(object):
             ret[i] = edge.vertexAcross(self)
             i = i+1
         return ret
-    
+
     #Return a set of all faces attached to this vertex
     def getAttachedFaces(self):
         ret = set()
@@ -94,7 +94,7 @@ class MeshVertex(object):
             if (edge.f2 != None):
                 ret.add(edge.f2)
         return ret
-    
+
     #Return the area of the one-ring faces attached to this vertex
     def getOneRingArea(self):
         faces = self.getAttachedFaces()
@@ -102,7 +102,7 @@ class MeshVertex(object):
         for f in faces:
             ret = ret + f.getArea()
         return ret
-    
+
     #Get an estimate of the vertex normal by taking a weighted
     #average of normals of attached faces
     def getNormal(self):
@@ -116,7 +116,7 @@ class MeshVertex(object):
         if totalArea == 0:
             return normal
         return (1.0/totalArea)*normal
-    
+
     #Sort the edges so that they are in CCW order when projected onto
     #the plane defined by the vertex's normal
     def getCCWSortedEdges(self):
@@ -144,23 +144,23 @@ class MeshFace(object):
             ret[i] = v
             v = self.edges[i].vertexAcross(v)
         return ret
-    
+
     #Return the vertices' positions in an N x 3 matrix
     def getVerticesPos(self):
         return self.mesh.VPos[[v.ID for v in self.getVertices()], :]
-    
+
     def getNormal(self):
         return getFaceNormal(self.getVerticesPos())
-    
+
     def getArea(self):
         return getPolygonArea(self.getVerticesPos())
-    
+
     def getCentroid(self):
         V = self.getVerticesPos()
         if V.size == 0:
             return np.array([[0, 0, 0]])
         return np.mean(V, 0)
-    
+
     def getPlane(self):
         return Plane3D(self.mesh.VPos[self.startV.ID, :], self.getNormal())
 
@@ -168,7 +168,7 @@ class MeshFace(object):
     def getClosestPoint(self, P):
         #TODO: Finish translating to numpy
         print "TODO: getClosestPoint()"
-        #return getClosestPoint([v.pos for v in self.getVertices()], P)            
+        #return getClosestPoint([v.pos for v in self.getVertices()], P)
 
 class MeshEdge(object):
     def __init__(self, mesh, v1, v2, ID):
@@ -176,7 +176,7 @@ class MeshEdge(object):
         self.ID = ID
         [self.v1, self.v2] = [v1, v2]
         [self.f1, self.f2] = [None, None]
-    
+
     def vertexAcross(self, startV):
         if startV == self.v1:
             return self.v2
@@ -184,7 +184,7 @@ class MeshEdge(object):
             return self.v1
         sys.stderr.write("Warning (vertexAcross): Vertex not member of edge\n")
         return None
-    
+
     def addFace(self, face, v1):
         if self.f1 == None:
             self.f1 = face
@@ -192,7 +192,9 @@ class MeshEdge(object):
             self.f2 = face
         else:
             sys.stderr.write("Cannot add face to edge; already 2 there\n")
-    
+            return False
+        return True
+
     #Remove pointer to face
     def removeFace(self, face):
         if self.f1 == face:
@@ -201,7 +203,7 @@ class MeshEdge(object):
             self.f2 = None
         else:
             sys.stderr.write("Cannot remove edge pointer to face that was never part of edge\n")
-    
+
     def faceAcross(self, startF):
         if startF == self.f1:
             return self.f2
@@ -209,13 +211,13 @@ class MeshEdge(object):
             return self.f1
         sys.stderr.write("Warning (faceAcross): Face not member of edge\n")
         return None
-    
+
     def getCenter(self):
         V = np.zeros((2, 3))
         V[0, :] = self.mesh.VPos[self.v1.ID, :]
         V[1, :] = self.mesh.VPos[self.v2.ID, :]
         return np.mean(V, 0)
-    
+
     def numAttachedFaces(self):
         ret = 0
         if self.f1:
@@ -268,6 +270,7 @@ class PolyMesh(object):
         self.VTexCoords = np.zeros((0, 2)) #Client side texture coordinate buffer
         self.ITris = np.zeros((0, 3)) #Client side triangle index buffer
         self.EdgeLines = np.zeros((0, 3)) #Client side edge lines
+        self.BoundaryLines = np.zeros((0, 3)) #Client side boundary lines
         #Buffer pointers
         self.texID = -1
         self.VPosVBO = None
@@ -276,19 +279,21 @@ class PolyMesh(object):
         self.VTexCoordsVBO = None
         self.IndexVBO = None
         self.EdgeLinesVBO = None
+        self.BoundaryLinesVBO = None
         self.VNormalLinesVBO = None
         self.FNormalLinesVBO = None
         #Display lists
         self.IndexDisplayList = -1
-        #Pointers to a representative vertex in different 
+        #Pointers to a representative vertex in different
         #connected components
         self.components = []
-    
+        self.manifold = True
+
     def Clone(self):
         print "TODO"
-    
+
     #Return the edge between v1 and v2 if it exists, or
-    #return None if an edge has not yet been created 
+    #return None if an edge has not yet been created
     #between them
     def getEdge(self, v1, v2):
         edge = v1.edges & v2.edges
@@ -297,10 +302,10 @@ class PolyMesh(object):
         for e in edge:
             return e
         return None
-    
+
     def getVerticesCols(self):
         return self.VPos.T
-    
+
     #############################################################
     ####                ADD/REMOVE METHODS                  #####
     #############################################################
@@ -309,7 +314,7 @@ class PolyMesh(object):
         vertex = MeshVertex(self, pos, color, texCoords, len(self.vertices))
         self.vertices.append(vertex)
         return vertex
-    
+
     #Create an edge between v1 and v2 and return it
     #This function assumes v1 and v2 are valid vertices in the mesh
     def addEdge(self, v1, v2):
@@ -318,7 +323,7 @@ class PolyMesh(object):
         v1.edges.add(edge)
         v2.edges.add(edge)
         return edge
-    
+
     #Given a list of pointers to mesh vertices in CCW order
     #create a face object from them
     def addFace(self, meshVerts):
@@ -340,10 +345,11 @@ class PolyMesh(object):
             if edge == None:
                 edge = self.addEdge(v1, v2)
             face.edges.append(edge)
-            edge.addFace(face, v1) #Add pointer to face from edge
+            if not edge.addFace(face, v1): #Add pointer to face from edge
+                self.manifold = False
         self.faces.append(face)
         return face
-    
+
     #Remove the face from the list of faces and remove the pointers
     #from all edges to this face
     def removeFace(self, face):
@@ -355,8 +361,8 @@ class PolyMesh(object):
         #Remove pointers from all of the face's edges
         for edge in face.edges:
             edge.removeFace(face)
-    
-    #Remove this edge from the list of edges and remove 
+
+    #Remove this edge from the list of edges and remove
     #references to the edge from both of its vertices
     #(NOTE: This function is not responsible for cleaning up
     #faces that may have used this edge; that is up to the client)
@@ -369,7 +375,7 @@ class PolyMesh(object):
         #Remove pointers from the two vertices that make up this edge
         edge.v1.edges.remove(edge)
         edge.v2.edges.remove(edge)
-    
+
     #Remove this vertex from the list of vertices
     #NOTE: This function is not responsible for cleaning up any of
     #the edges or faces that may have used this vertex
@@ -382,13 +388,13 @@ class PolyMesh(object):
         self.vertices[vertex.ID].ID = vertex.ID
         vertex.ID = -1
         self.vertices.pop()
-    
+
     #############################################################
     ####    TOPOLOGY SUBDIVISION AND REMESHING METHODS      #####
     #############################################################
-    
+
     #Split every face into K+1 faces by creating a new vertex
-    #at the midpoint of every edge, removing the original face, 
+    #at the midpoint of every edge, removing the original face,
     #creating a new face connecting all the new vertices, and
     #creating triangular faces to fill in the gaps
     def splitFaces(self):
@@ -420,7 +426,7 @@ class PolyMesh(object):
                 if e.ID != -1: #If the edge has not already been removed
                     self.removeEdge(e)
         self.needsDisplayUpdate = True
-    
+
     #Split every face into N triangles by creating a vertex at
     #the centroid of each face
     def starRemeshFaces(self, faces):
@@ -439,12 +445,12 @@ class PolyMesh(object):
                 newFace = self.addFace(newVerts)
         self.needsDisplayUpdate = True
         self.needsIndexDisplayUpdate = True
-    
+
     def starRemesh(self):
         #Copy over the face list since it's about to be modified
         faces = list(self.faces)
         self.starRemeshFaces(faces)
-    
+
     #Triangulate all faces that are not triangular by using
     #the star scheme
     def starTriangulate(self):
@@ -453,7 +459,7 @@ class PolyMesh(object):
             if len(f.edges) > 3:
                 faces.append(f)
         self.starRemeshFaces(faces)
-    
+
     #This function works best starting with triangular meshes
     def evenTriangleRemesh(self):
         for e in self.edges:
@@ -471,9 +477,9 @@ class PolyMesh(object):
                 facesToAdd.append([e1.centerVertex, v, e2.centerVertex])
             #Add the face in the center
             facesToAdd.append([e.centerVertex for e in f.edges])
-        
+
         #Remove every face and every original edge
-        #and add the new faces (which will implicitly 
+        #and add the new faces (which will implicitly
         #add the new split edges)
         self.faces = []
         self.edges = []
@@ -498,11 +504,11 @@ class PolyMesh(object):
                 v2 = verts[i+1]
                 newFace = self.addFace([v0, v1, v2])
         self.needsDisplayUpdate = True
-    
+
     def flipNormals(self):
         for f in self.faces:
             f.flipNormal()
-    
+
     def getConnectedComponents(self):
         self.components = []
         for v in self.vertices:
@@ -518,14 +524,14 @@ class PolyMesh(object):
                             stack.append(vNeighbor)
                     else:
                         stack.pop()
-    
+
     def getConnectedComponentCounts(self):
         counts = [0]*len(self.components)
         for v in self.vertices:
             if v.component > -1:
                 counts[v.component] = counts[v.component] + 1
         return counts
-    
+
     def deleteAllButLargestConnectedComponent(self):
         if len(self.components) == 0:
             self.getConnectedComponents()
@@ -560,7 +566,7 @@ class PolyMesh(object):
             for v in self.vertices:
                 v.component = 0
         self.needsDisplayUpdate = True
-    
+
     #Fill hole with the "advancing front" method
     #but keep it simple for now; not tests for self intersections
     def fillHole(self, hole):
@@ -580,8 +586,63 @@ class PolyMesh(object):
             v1 = hole[i]
             v2 = hole[(i+1)%len(hole)]
             self.addFace([vCenter, v1, v2])
-        
-    
+
+    def getLoops(self):
+        """
+        Return a list of loops, where each element is an ordered list of edges
+        """
+        origEdges = self.edges[:]
+        loops = []
+        for e in origEdges:
+            e.partOfLoop = False
+        for e in origEdges:
+            if e.numAttachedFaces() == 1 and not e.partOfLoop:
+                e.partOfLoop = True
+                loop = [e]
+                loopVs = [e.v1, e.v2]
+                finished = False
+                counter = 0
+                while not finished:
+                    counter += 1
+                    if counter > len(origEdges):
+                        print "Something went wrong looking for loops (likely non-manifold)"
+                        return loops
+                    foundNext = False
+                    for v in loopVs[-1].getVertexNeighbors():
+                        if v is loopVs[-2]:
+                            #Make sure it doesn't accidentally back up
+                            continue
+                        elif v is loopVs[0] and len(loopVs) > 2:
+                            #It's looped back on itself so we're done
+                            finished = True
+                            e = getEdgeInCommon(v, loopVs[-1])
+                            if not e:
+                                print "Warning: Edge not found when trying to close loop"
+                                finished = True
+                            else:
+                                e.partOfLoop = True
+                                finished = True
+                                loop.append(e)
+                        else:
+                            e = getEdgeInCommon(loopVs[-1], v)
+                            if not e:
+                                print "Warning: Edge not found in common while trying to trace hole boundary"
+                                finished = True
+                                break
+                            elif e.numAttachedFaces() == 1:
+                                foundNext = True
+                                e.partOfLoop = True
+                                loopVs.append(v)
+                                loop.append(e)
+                                break
+                    if not foundNext and not finished:
+                        print "Warning: Unable to close hole"
+                        break
+                print "Found hole of size %i"%len(loop)
+                loops.append(loop)
+        print "Finished loops"
+        return loops
+
     def fillHoles(self, slicedHolesOnly = False):
         holes = []
         origEdges = self.edges[:]
@@ -624,10 +685,10 @@ class PolyMesh(object):
     #stored in the vertices
     def Transform(self, matrix):
         self.VPos = matrix.dot(self.VPos.T).T
-    
+
     def Translate(self, dV):
         self.VPos = self.VPos + np.reshape(dV, [1, 3])
-    
+
     def Scale(self, dx, dy, dz):
         S = np.zeros((1, 3))
         S[0, :] = [dx, dy, dz]
@@ -635,7 +696,7 @@ class PolyMesh(object):
 
     def getCentroid(self):
         return np.mean(self.VPos, 0)
-    
+
     def getBBox(self):
         if self.VPos.shape[0] == 0:
             print "Warning: PolyMesh.getBBox(): Adding bbox but no vertices"
@@ -643,7 +704,7 @@ class PolyMesh(object):
         bbox = BBox3D()
         bbox.fromPoints(self.VPos)
         return bbox
-    
+
     #Use PCA to find the principal axes of the vertices
     def getPrincipalAxes(self):
         X = self.VPos - self.getCentroid()
@@ -657,8 +718,8 @@ class PolyMesh(object):
         maxProj = T.max(0)
         minProj = T.min(0)
         axes = axes.T #Put each axis on each row to be consistent with everything else
-        return (axes, maxProj, minProj)        
-    
+        return (axes, maxProj, minProj)
+
     #Delete the parts of the mesh below "plane".  If fillHoles
     #is true, plug up the holes that result from the cut
     def sliceBelowPlane(self, plane, fillHoles = True):
@@ -688,7 +749,7 @@ class PolyMesh(object):
                 distV1 = plane.distFromPlane(self.VPos[v1.ID, :])
                 distV2 = plane.distFromPlane(self.VPos[v2.ID, :])
                 #Mark all vertices below the plane for deletion
-                #(this will count vertices more than once but 
+                #(this will count vertices more than once but
                 #because mesh is manifold the amortized size will
                 #still be linear in the number of vertices)
                 if distV1 < 0:
@@ -728,7 +789,7 @@ class PolyMesh(object):
                             e.centerVertex.borderVertex = True
                             borderVertex = e.centerVertex
                     if e.centerVertex:
-                        splitFaceEndE = e                    
+                        splitFaceEndE = e
                 v1 = v2
             if deleteFace:
                 facesToDel.append(f)
@@ -748,7 +809,7 @@ class PolyMesh(object):
                 facesToAdd.append(newFace)
         #First remove all faces that are no longer relevant
         for f in facesToDel:
-            self.removeFace(f)    
+            self.removeFace(f)
         #Now remove edges that are no longer relevant
         for e in edgesToDel:
             if e.ID != -1:
@@ -764,12 +825,12 @@ class PolyMesh(object):
             self.fillHoles(slicedHolesOnly = True)
         self.needsDisplayUpdate = True
         self.needsIndexDisplayUpdate = True
-    
+
     def sliceAbovePlane(self, plane, fillHoles = True):
         planeNeg = Plane3D(plane.P0, plane.N)
         planeNeg.initFromEquation(-plane.A, -plane.B, -plane.C, -plane.D)
         self.sliceBelowPlane(planeNeg, fillHoles)
-    
+
     def flipAcrossPlane(self, plane):
         P0 = plane.P0
         N = plane.N
@@ -780,7 +841,7 @@ class PolyMesh(object):
             dPPerp = dP - dPPar
             self.VPos[V.ID, :] = P0 - dPPar + dPPerp
         self.needsDisplayUpdate = True
-    
+
     #Uniformly sample points on this mesh at random, taking into consideration
     #the area of triangle faces
     #Return the points and normal estimates
@@ -792,7 +853,7 @@ class PolyMesh(object):
             self.updateTris()
         ###Step 1: Compute cross product of all face triangles and use to compute
         #areas and normals (very similar to code used to compute vertex normals)
-        
+
         #Vectors spanning two triangle edges
         P0 = self.VPos[self.ITris[:, 0], :]
         P1 = self.VPos[self.ITris[:, 1], :]
@@ -801,7 +862,7 @@ class PolyMesh(object):
         V2 = P2 - P0
         FNormals = np.cross(V1, V2)
         FAreas = np.sqrt(np.sum(FNormals**2, 1)).flatten()
-        
+
         #Get rid of zero area faces and update points
         self.ITris = self.ITris[FAreas > 0, :]
         FNormals = FNormals[FAreas > 0, :]
@@ -809,7 +870,7 @@ class PolyMesh(object):
         P0 = self.VPos[self.ITris[:, 0], :]
         P1 = self.VPos[self.ITris[:, 1], :]
         P2 = self.VPos[self.ITris[:, 2], :]
-        
+
         #Compute normals
         NTris = self.ITris.shape[0]
         FNormals = FNormals/FAreas[:, None]
@@ -824,7 +885,7 @@ class PolyMesh(object):
         #Normalize normals
         VAreas[VAreas == 0] = 1
         self.VNormals = self.VNormals / VAreas[:, None]
-        
+
         ###Step 2: Randomly sample points based on areas
         FAreas = FAreas/np.sum(FAreas)
         AreasC = np.cumsum(FAreas)
@@ -844,12 +905,12 @@ class PolyMesh(object):
             idx += FSamples[i]
         N = np.zeros((NPoints, 3)) #Allocate space for normals
         idx = 0
-        
+
         #Vector used to determine if points need to be flipped across parallelogram
         V3 = P2 - P1
         V3 = V3/np.sqrt(np.sum(V3**2, 1))[:, None] #Normalize
-        
-        #Randomly sample points on each face        
+
+        #Randomly sample points on each face
         #Generate random points uniformly in parallelogram
         u = np.random.rand(NPoints, 1)
         v = np.random.rand(NPoints, 1)
@@ -868,16 +929,16 @@ class PolyMesh(object):
         u[idxflip, :] = 1 - u[idxflip, :]
         v[idxflip, :] = 1 - v[idxflip, :]
         Ps[idxflip, :] = P0[tidx[idxflip], :] + u[idxflip, :]*V1[tidx[idxflip], :] + v[idxflip, :]*V2[tidx[idxflip], :]
-        
+
         #Step 3: Compute normals of sampled points by barycentric interpolation
         Ns = u*self.VNormals[self.ITris[tidx, 1], :]
-        Ns += v*self.VNormals[self.ITris[tidx, 2], :] 
+        Ns += v*self.VNormals[self.ITris[tidx, 2], :]
         Ns += (1-u-v)*self.VNormals[self.ITris[tidx, 0], :]
-        
+
         if colPoints:
             return (Ps.T, Ns.T)
         return (Ps, Ns)
-    
+
     #############################################################
     ####                INPUT/OUTPUT METHODS                #####
     #############################################################
@@ -893,7 +954,7 @@ class PolyMesh(object):
             print "Unsupported file suffix (%s) for loading mesh"%(suffix, filename)
         self.needsDisplayUpdate = True
         self.needsIndexDisplayUpdate = True
-    
+
     def saveFile(self, filename, verbose = False):
         suffix = re.split("\.", filename)[-1]
         if suffix == "off":
@@ -903,8 +964,8 @@ class PolyMesh(object):
         elif suffix == "ply":
             self.savePlyFile(filename, verbose)
         else:
-            print "Unsupported file suffix (%s) for saving mesh %s"%(suffix, filename)        
-    
+            print "Unsupported file suffix (%s) for saving mesh %s"%(suffix, filename)
+
     def loadOffFile(self, filename):
         fin = open(filename, 'r')
         nVertices = 0
@@ -926,13 +987,13 @@ class PolyMesh(object):
                 if fields[0] == "OFF" or fields[0] == "COFF":
                     if len(fields) > 2:
                         fields[1:4] = [int(field) for field in fields]
-                        [nVertices, nFaces, nEdges] = fields[1:4]  
-                        #Pre-allocate vertex arrays    
-                        self.VPos = np.zeros((nVertices, 3)) 
+                        [nVertices, nFaces, nEdges] = fields[1:4]
+                        #Pre-allocate vertex arrays
+                        self.VPos = np.zeros((nVertices, 3))
                         self.VColors = np.zeros((nVertices, 3))
                         self.VTexCoords = np.zeros((nVertices, 2))
                     if fields[0] == "COFF":
-                        divideColor = True            
+                        divideColor = True
                 else:
                     fields[0:3] = [int(field) for field in fields]
                     [nVertices, nFaces, nEdges] = fields[0:3]
@@ -959,7 +1020,7 @@ class PolyMesh(object):
         if np.max(self.VColors) > 1:
             #Rescale colors
             self.VColors = self.VColors / 255.0
-    
+
     #My own "TOFF" format, which is like OFF with texture
     def loadTOffFile(self, filename):
         fin = open(filename, 'r')
@@ -981,12 +1042,12 @@ class PolyMesh(object):
             if nVertices == 0:
                 if fields[0] == "TOFF":
                     textureName = fields[1]
-                    self.texID = loadTexture(textureName)    
+                    self.texID = loadTexture(textureName)
                 else:
                     fields[0:3] = [int(field) for field in fields]
                     [nVertices, nFaces, nEdges] = fields[0:3]
-                    #Pre-allocate vertex arrays    
-                    self.VPos = np.zeros((nVertices, 3)) 
+                    #Pre-allocate vertex arrays
+                    self.VPos = np.zeros((nVertices, 3))
                     self.VColors = np.zeros((nVertices, 3))
                     self.VTexCoords = np.zeros((nVertices, 2))
             elif vertex < nVertices:
@@ -1003,7 +1064,7 @@ class PolyMesh(object):
                 self.addFace(verts)
                 face = face+1
         fin.close()
-            
+
     def saveOffFile(self, filename, verbose = False, outputColors = True, output255 = False):
         nV = len(self.vertices)
         nE = len(self.edges)
@@ -1060,7 +1121,7 @@ class PolyMesh(object):
         fout.close()
         if verbose:
             print "Saved file to %s"%filename
-        
+
     def loadObjFile(self, filename):
         #TODO: Right now vertex normals, face normals, and texture coordinates are ignored
         #Later incorporate them??
@@ -1080,7 +1141,7 @@ class PolyMesh(object):
                 verts = [self.vertices[i] for i in indices]
                 self.addFace(verts)
         fin.close()
-    
+
     def saveObjFile(self, filename, verbose = False):
         fout = open(filename, "w")
         fout.write("#Generated with Chris Tralie's G-RFLCT Library\n")
@@ -1105,7 +1166,7 @@ class PolyMesh(object):
     #############################################################
     ####                     RENDERING                      #####
     #############################################################
-    
+
     #Figure out triangles that go into the index buffer, splitting faces
     #with more than three vertices into triangles (assuming convexity)
     def updateTris(self):
@@ -1117,7 +1178,7 @@ class PolyMesh(object):
             for k in range(len(IDs)-2):
                 self.ITris[idx, :] = [IDs[0]] + IDs[k+1:k+3]
                 idx += 1
-    
+
     def updateNormalBuffer(self):
         #First compute cross products of all face triangles
         V1 = self.VPos[self.ITris[:, 1], :] - self.VPos[self.ITris[:, 0], :]
@@ -1138,34 +1199,21 @@ class PolyMesh(object):
         #Normalize normals
         VAreas[VAreas == 0] = 1
         self.VNormals = self.VNormals / VAreas
-    
+
     #buffersOnly: True if there is no mesh structure other than VPos
     #VColors and ITris
     def performDisplayUpdate(self, buffersOnly = False):
         #Clear the buffers for the invalidated mesh
-        if self.VPosVBO:
-            self.VPosVBO.delete()
-        if self.VNormalsVBO:
-            self.VNormalsVBO.delete()
-        if self.VColorsVBO:
-            self.VColorsVBO.delete()
-        if self.VTexCoordsVBO:
-            self.VTexCoordsVBO.delete()
-        if self.IndexVBO:
-            self.IndexVBO.delete()
-        if self.EdgeLinesVBO:
-            self.EdgeLinesVBO.delete()
-        if self.VNormalLinesVBO:
-            self.VNormalLinesVBO.delete()
-        if self.FNormalLinesVBO:
-            self.FNormalLinesVBO.delete()
+        for v in [self.VPosVBO, self.VNormalsVBO, self.VColorsVBO, self.VTexCoordsVBO, self.IndexVBO, self.EdgeLinesVBO, self.BoundaryLinesVBO, self.VNormalLinesVBO, self.FNormalLinesVBO]:
+            if v:
+                v.delete()
         self.VPosVBO = vbo.VBO(np.array(self.VPos, dtype=np.float32))
         self.VColorsVBO = vbo.VBO(np.array(self.VColors, dtype=np.float32))
         self.VTexCoordsVBO = vbo.VBO(np.array(self.VTexCoords, dtype=np.float32))
         if not buffersOnly:
             self.updateTris()
         self.IndexVBO = vbo.VBO(self.ITris, target=GL_ELEMENT_ARRAY_BUFFER)
-        
+
         #Update edges buffer
         if buffersOnly:
             #Use triangle faces to add edges (will be redundancy but is faster
@@ -1176,14 +1224,25 @@ class PolyMesh(object):
                 istart = k*NTris*2
                 self.EdgeLines[istart:istart+NTris*2:2, :] = self.VPos[self.ITris[:, k], :]
                 self.EdgeLines[istart+1:istart+NTris*2:2, :] = self.VPos[self.ITris[:, (k+1)%3], :]
+            self.BoundaryLines = np.zeros((0, 3))
         else:
             #Use the mesh structure to find the edges
-            self.EdgeLines = np.zeros((len(self.edges)*2, 3))
-            for i in range(len(self.edges)):
-                self.EdgeLines[i*2, :] = self.VPos[self.edges[i].v1.ID, :]
-                self.EdgeLines[i*2+1, :] = self.VPos[self.edges[i].v2.ID, :]
+            edges = self.edges
+            self.EdgeLines = np.zeros((len(edges)*2, 3))
+            for i in range(len(edges)):
+                self.EdgeLines[i*2, :] = self.VPos[edges[i].v1.ID, :]
+                self.EdgeLines[i*2+1, :] = self.VPos[edges[i].v2.ID, :]
+            edges = []
+            loops = self.getLoops()
+            for l in loops:
+                edges += l
+            self.BoundaryLines = np.zeros((len(edges)*2, 3))
+            for i in range(len(edges)):
+                self.BoundaryLines[i*2, :] = self.VPos[edges[i].v1.ID, :]
+                self.BoundaryLines[i*2+1, :] = self.VPos[edges[i].v2.ID, :]
         self.EdgeLinesVBO = vbo.VBO(np.array(self.EdgeLines, dtype=np.float32))
-        
+        self.BoundaryLinesVBO = vbo.VBO(np.array(self.BoundaryLines, dtype=np.float32))
+
         #Update face and vertex normals
         scale = 0.01*self.getBBox().getDiagLength()
         self.updateNormalBuffer()
@@ -1196,11 +1255,11 @@ class PolyMesh(object):
         VFList[np.arange(0, VFList.shape[0], 2), :] = self.FCentroid
         VFList[np.arange(1, VFList.shape[0], 2), :] = self.FCentroid + scale*self.FNormals
         self.FNormalLinesVBO = vbo.VBO(np.array(VFList, dtype=np.float32))
-        
+
         self.needsDisplayUpdate = False
-    
+
     #vertexColors is an Nx3 numpy array, where N is the number of vertices
-    def renderGL(self, drawEdges = False, drawVerts = False, drawFaces = True, drawVertexNormals = True, drawFaceNormals = True, useLighting = True, useTexture = False):
+    def renderGL(self, drawEdges = False, drawVerts = False, drawFaces = True, drawVertexNormals = True, drawFaceNormals = True, useLighting = True, useTexture = False, drawBoundary = False):
         if self.needsDisplayUpdate:
             self.performDisplayUpdate()
             self.needsDisplayUpdate = False
@@ -1237,7 +1296,7 @@ class PolyMesh(object):
             glDisableClientState(GL_NORMAL_ARRAY)
             glDisableClientState(GL_COLOR_ARRAY)
             glDisableClientState(GL_VERTEX_ARRAY)
-        
+
         if drawVerts:
             glEnableClientState(GL_VERTEX_ARRAY)
             self.VPosVBO.bind()
@@ -1248,7 +1307,7 @@ class PolyMesh(object):
             glDrawArrays(GL_POINTS, 0, self.VPos.shape[0])
             self.VPosVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
-        
+
         if drawEdges:
             glEnableClientState(GL_VERTEX_ARRAY)
             self.EdgeLinesVBO.bind()
@@ -1259,7 +1318,18 @@ class PolyMesh(object):
             glDrawArrays(GL_LINES, 0, self.EdgeLines.shape[0])
             self.EdgeLinesVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
-        
+
+        if drawBoundary:
+            glEnableClientState(GL_VERTEX_ARRAY)
+            self.BoundaryLinesVBO.bind()
+            glVertexPointerf(self.BoundaryLinesVBO)
+            glDisable(GL_LIGHTING)
+            glLineWidth(3)
+            glColor3f(1.0, 0, 1.0)
+            glDrawArrays(GL_LINES, 0, self.BoundaryLines.shape[0])
+            self.BoundaryLinesVBO.unbind()
+            glDisableClientState(GL_VERTEX_ARRAY)
+
         if drawVertexNormals:
             glEnableClientState(GL_VERTEX_ARRAY)
             self.VNormalLinesVBO.bind()
@@ -1269,7 +1339,7 @@ class PolyMesh(object):
             glDrawArrays(GL_LINES, 0, self.VPos.shape[0]*2)
             self.VNormalLinesVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
-        
+
         if drawFaceNormals:
             glEnableClientState(GL_VERTEX_ARRAY)
             self.FNormalLinesVBO.bind()
@@ -1279,7 +1349,7 @@ class PolyMesh(object):
             glDrawArrays(GL_LINES, 0, self.ITris.shape[0]*2)
             self.FNormalLinesVBO.unbind()
             glDisableClientState(GL_VERTEX_ARRAY)
-        
+
         if useLighting:
             glEnable(GL_LIGHTING)
 
@@ -1293,7 +1363,7 @@ class PolyMesh(object):
             self.performDisplayUpdate()
             self.needsDisplayUpdate = False
         glCallList(self.IndexDisplayList)
-        
+
     def updateIndexDisplayList(self):
         if self.IndexDisplayList != -1: #Deallocate previous display list
             glDeleteLists(self.IndexDisplayList, 1)
@@ -1338,13 +1408,13 @@ class PolyMesh(object):
                     Face = f
         return [t, Point, Face]
         return None
-    
+
     def __str__(self):
         nV = len(self.vertices)
         nE = len(self.edges)
         nF = len(self.faces)
         euler = nV-nE+nF
-        return "PolyMesh Object: NVertices = %i, NEdges = %i, NFaces = %i, euler=%i"%(nV, nE, nF, euler)    
+        return "PolyMesh Object: NVertices = %i, NEdges = %i, NFaces = %i, euler=%i"%(nV, nE, nF, euler)
 
 
 #############################################################
@@ -1393,18 +1463,18 @@ def loadOffFileExternal(filename):
             if fields[0] == "OFF" or fields[0] == "COFF":
                 if len(fields) > 2:
                     fields[1:4] = [int(field) for field in fields]
-                    [nVertices, nFaces, nEdges] = fields[1:4]  
+                    [nVertices, nFaces, nEdges] = fields[1:4]
                     print "nVertices = %i, nFaces = %i"%(nVertices, nFaces)
-                    #Pre-allocate vertex arrays    
-                    VPos = np.zeros((nVertices, 3)) 
+                    #Pre-allocate vertex arrays
+                    VPos = np.zeros((nVertices, 3))
                     VColors = np.zeros((nVertices, 3))
                     ITris = np.zeros((nFaces, 3))
                 if fields[0] == "COFF":
-                    divideColor = True            
+                    divideColor = True
             else:
                 fields[0:3] = [int(field) for field in fields]
                 [nVertices, nFaces, nEdges] = fields[0:3]
-                VPos = np.zeros((nVertices, 3)) 
+                VPos = np.zeros((nVertices, 3))
                 VColors = np.zeros((nVertices, 3))
                 ITris = np.zeros((nFaces, 3))
         elif vertex < nVertices:
@@ -1429,7 +1499,7 @@ def loadOffFileExternal(filename):
     VPos = np.array(VPos, np.float64)
     VColors = np.array(VColors, np.float64)
     ITris = np.array(ITris, np.int32)
-    return (VPos, VColors, ITris) 
+    return (VPos, VColors, ITris)
 
 #Make a surface of revolution around the y-axis (x = 0, z = 0)
 #X: An ordrered N x 2 list of points in the XY plane that make up a curve
@@ -1604,7 +1674,7 @@ def getIcosahedronMesh():
     #Right cube face vertices
     RT = mesh.addVertex(np.array([phi/2, 0.5, 0]))
     RB = mesh.addVertex(np.array([phi/2, -0.5, 0]))
-    
+
     #Add the icosahedron faces associated with each cube face
     #Front cube face faces
     mesh.addFace([TF, FL, FR])
@@ -1624,7 +1694,7 @@ def getIcosahedronMesh():
     #Right cube face faces
     mesh.addFace([RT, RB, BR])
     mesh.addFace([RB, RT, FR])
-    
+
     #Add the icosahedron faces associated with each cube vertex
     #Front of cube
     mesh.addFace([FL, TF, LT]) #Top left corner
@@ -1636,7 +1706,7 @@ def getIcosahedronMesh():
     mesh.addFace([BL, LB, BB]) #Bottom left corner
     mesh.addFace([RT, BR, TB]) #Top right corner
     mesh.addFace([BB, RB, BR]) #Bottom right corner
-    
+
     return mesh
 
 def getDodecahedronMesh():
@@ -1686,7 +1756,7 @@ def getHemiSphereMesh(R, nIters):
         mesh.evenTriangleRemesh()
         #Move points so that they're R away from the origin
         mesh.VPos = mesh.VPos/np.reshape(np.sqrt(np.sum(mesh.VPos**2, 1)), [mesh.VPos.shape[0], 1])
-    return mesh    
+    return mesh
 
 if __name__ == '__main__':
     icosahedronMesh = getIcosahedronMesh()

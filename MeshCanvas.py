@@ -36,30 +36,31 @@ def saveImage(canvas, filename):
 class BasicMeshCanvas(glcanvas.GLCanvas):
     def __init__(self, parent):
         attribs = (glcanvas.WX_GL_RGBA, glcanvas.WX_GL_DOUBLEBUFFER, glcanvas.WX_GL_DEPTH_SIZE, 24)
-        glcanvas.GLCanvas.__init__(self, parent, -1, attribList = attribs)    
+        glcanvas.GLCanvas.__init__(self, parent, -1, attribList = attribs)
         self.context = glcanvas.GLContext(self)
-        
+
         self.parent = parent
         #Camera state variables
         self.size = self.GetClientSize()
         #self.camera = MouseSphericalCamera(self.size.x, self.size.y)
         self.camera = MousePolarCamera(self.size.width, self.size.height)
-        
+
         #Main state variables
         self.MousePos = [0, 0]
-        self.bbox = BBox3D()  
-        
+        self.bbox = BBox3D()
+
         #Face mesh variables and manipulation variables
         self.mesh = None
         self.meshCentroid = None
         self.displayMeshFaces = True
         self.displayMeshEdges = False
+        self.displayBoundary = False
         self.displayMeshVertices = True
         self.displayVertexNormals = False
         self.displayFaceNormals = False
         self.useLighting = True
         self.useTexture = False
-        
+
         self.GLinitialized = False
         #GL-related events
         wx.EVT_ERASE_BACKGROUND(self, self.processEraseBackgroundEvent)
@@ -73,27 +74,27 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
         wx.EVT_MIDDLE_DOWN(self, self.MouseDown)
         wx.EVT_MIDDLE_UP(self, self.MouseUp)
         wx.EVT_MOTION(self, self.MouseMotion)
-    
+
     def initMeshBBox(self):
         if self.mesh:
             self.bbox = self.mesh.getBBox()
             print "Mesh BBox: %s\n"%self.bbox
             self.camera.centerOnBBox(self.bbox, theta = -math.pi/2, phi = math.pi/2)
-        
+
     def viewFromFront(self, evt):
         self.camera.centerOnBBox(self.bbox, theta = -math.pi/2, phi = math.pi/2)
         self.Refresh()
-    
+
     def viewFromTop(self, evt):
         self.camera.centerOnBBox(self.bbox, theta = -math.pi/2, phi = 0)
         self.Refresh()
-    
+
     def viewFromSide(self, evt):
         self.camera.centerOnBBox(self.bbox, theta = -math.pi, phi = math.pi/2)
         self.Refresh()
-    
+
     def processEraseBackgroundEvent(self, event): pass #avoid flashing on MSW.
-    
+
     def processSizeEvent(self, event):
         self.size = self.GetClientSize()
         glViewport(0, 0, self.size.width, self.size.height)
@@ -117,8 +118,8 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
         #Set up modelview matrix
         self.camera.gotoCameraFrame()
         glLightfv(GL_LIGHT0, GL_POSITION, np.array([0, 0, 0, 1]))
-        self.mesh.renderGL(self.displayMeshEdges, self.displayMeshVertices, self.displayMeshFaces, self.displayVertexNormals, self.displayFaceNormals, self.useLighting, self.useTexture)
-    
+        self.mesh.renderGL(self.displayMeshEdges, self.displayMeshVertices, self.displayMeshFaces, self.displayVertexNormals, self.displayFaceNormals, self.useLighting, self.useTexture, self.displayBoundary)
+
     def setupPerspectiveMatrix(self, nearDist = -1, farDist = -1):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -127,17 +128,17 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
             farDist = np.sqrt(farDist.dot(farDist)) + self.bbox.getDiagLength()
             nearDist = farDist/50.0
         gluPerspective(180.0*self.camera.yfov/M_PI, float(self.size.x)/self.size.y, nearDist, farDist)
-    
+
     def repaint(self):
         self.setupPerspectiveMatrix()
         glClearColor(0.0, 0.0, 0.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        
+
         if self.mesh:
             self.drawMeshStandard()
         self.SwapBuffers()
-    
-    def initGL(self):        
+
+    def initGL(self):
         glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.2, 0.2, 0.2, 1.0])
         glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, [1.0, 1.0, 1.0, 1.0])
@@ -159,7 +160,7 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
         self.CaptureMouse()
         self.handleMouseStuff(x, y)
         self.Refresh()
-    
+
     def MouseUp(self, evt):
         x, y = evt.GetPosition()
         self.handleMouseStuff(x, y)
@@ -182,7 +183,7 @@ class BasicMeshCanvas(glcanvas.GLCanvas):
             elif evt.LeftIsDown():
                 self.camera.orbitLeftRight(dX)
                 self.camera.orbitUpDown(dY)
-        self.Refresh() 
+        self.Refresh()
 
 if __name__ == '__main__':
     app = wx.PySimpleApp()
