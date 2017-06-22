@@ -161,6 +161,15 @@ class MeshFace(object):
             return np.array([[0, 0, 0]])
         return np.mean(V, 0)
 
+    def getAdjacentFaces(self):
+        ret = []
+        for e in self.edges:
+            if e.f1 and not (e.f1 is self):
+                ret.append(e.f1)
+            elif e.f2 and not (e.f2 is self):
+                ret.append(e.f2)
+        return ret
+
     def getPlane(self):
         return Plane3D(self.mesh.VPos[self.startV.ID, :], self.getNormal())
 
