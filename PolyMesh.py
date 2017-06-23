@@ -253,6 +253,14 @@ def getEdgeInCommon(v1, v2):
             return e
     return None
 
+def getFacesEdgeInCommon(f1, f2):
+    s1 = set(f1.edges)
+    s2 = set(f2.edges)
+    res = s1 & s2
+    if not len(res) == 1:
+        return None
+    return res.pop()
+
 def getVertexInCommon(e1, e2):
     v = [e1.v1, e1.v2, e2.v1, e2.v2]
     for i in range(4):
